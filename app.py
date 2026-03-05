@@ -9,6 +9,21 @@ from price_api import get_current_price as api_get_price, get_ticker_info as api
 
 st.set_page_config(page_title="Yuhdash", page_icon=":material/finance_mode:", layout="wide")
 
+st.markdown("""
+<style>
+[data-testid="metric-container"] {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 14px 16px;
+    background-color: rgba(255,255,255,0.025);
+}
+[data-testid="stMetricDelta"] {
+    font-size: 0.82rem !important;
+    font-weight: 700 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_ticker_info(ticker: str) -> Dict:
     """Get ticker information using multi-source API"""
@@ -329,29 +344,10 @@ if uploaded_file is not None:
                     # Fallback to average cost
                     current_prices[asset] = abs(portfolio[asset]['total_cost'] / portfolio[asset]['quantity']) if portfolio[asset]['quantity'] > 0 else 0
 
-        # Calculate metrics
-        st.header(":material/account_balance_wallet: Summary")
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric("Total Fees Paid", f"{total_fees:.2f} CHF")
-
-        with col2:
-            total_invested = sum([abs(p['total_cost']) for p in portfolio.values() if p['quantity'] > 0.0001])
-            st.metric("Total Invested (Cost)", f"{total_invested:.2f} CHF")
-
-        with col3:
-            unique_assets = len([k for k, v in portfolio.items() if v['quantity'] > 0.0001])
-            st.metric("Assets in Portfolio", unique_assets)
-
-        with col4:
-            total_realized = sum(realized_pnl.values())
-            st.metric("Realized Profits", f"{total_realized:.2f} CHF",
-                     delta="Closed" if total_realized != 0 else None)
-
-        # Portfolio Analysis
-        st.header(":material/analytics: Portfolio Analysis")
+        # Pre-compute all metrics before display
+        total_invested = sum([abs(p['total_cost']) for p in portfolio.values() if p['quantity'] > 0.0001])
+        unique_assets = len([k for k, v in portfolio.items() if v['quantity'] > 0.0001])
+        total_realized = sum(realized_pnl.values())
 
         portfolio_data = []
         total_current_value = 0
@@ -359,7 +355,6 @@ if uploaded_file is not None:
         total_unrealized = 0
 
         for asset, data in portfolio.items():
-            # Skip assets with effectively zero quantity (less than 0.0001)
             if data['quantity'] > 0.0001:
                 current_price = current_prices.get(asset, 0)
                 current_value = data['quantity'] * current_price
@@ -371,19 +366,21 @@ if uploaded_file is not None:
                 total_pnl = realized + unrealized_pnl
                 total_pnl_pct = (total_pnl / cost * 100) if cost > 0.01 else 0
 
-                # Get asset info
                 info = get_ticker_info(asset)
 
-                # Use description from ACTIVITY NAME if available
                 asset_desc = asset_descriptions.get(asset, '')
                 if not asset_desc:
                     asset_desc = info['name']
 
-                # Determine asset type
                 asset_type = info.get('asset_type', 'N/A')
+                type_icon = {
+                    'ETF': '📊', 'Stock': '📈', 'Crypto': '₿',
+                    'Mutual Fund': '📊', 'Index': '📉', 'Future': '📈',
+                    'Option': '📈', 'Currency': '💱', 'N/A': '—'
+                }.get(asset_type, '—')
 
                 portfolio_data.append({
-                    'Type': asset_type,
+                    'Type': f"{type_icon} {asset_type}",
                     'Asset': asset,
                     'Name': asset_desc,
                     'Quantity': data['quantity'],
@@ -405,43 +402,66 @@ if uploaded_file is not None:
 
         portfolio_df = pd.DataFrame(portfolio_data)
 
-        # Summary metrics
         total_profit_loss = total_unrealized + total_realized
         net_profit_loss = total_profit_loss - total_fees
         total_profit_loss_pct = (total_profit_loss / total_cost * 100) if total_cost > 0 else 0
         roi_pct = (net_profit_loss / total_cost * 100) if total_cost > 0 else 0
 
+        # Primary performance KPIs
+        st.header(":material/analytics: Portfolio Overview")
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-            st.metric("Current Portfolio Value", f"{total_current_value:.2f} CHF")
+            st.metric("Portfolio Value", f"{total_current_value:.2f} CHF")
 
         with col2:
             st.metric(
-                "Unrealized PnL (Open)",
+                "Unrealized P&L",
                 f"{total_unrealized:.2f} CHF",
-                delta=f"{(total_unrealized/total_cost*100):.2f}%",
+                delta=f"{(total_unrealized/total_cost*100):+.2f}%" if total_cost > 0 else None,
                 delta_color="normal" if total_unrealized >= 0 else "inverse",
-                help="Profits/losses from open positions (excluding fees)"
+                help="Open positions, excluding fees"
             )
 
         with col3:
             st.metric(
-                "Total Gross PnL",
+                "Gross P&L",
                 f"{total_profit_loss:.2f} CHF",
-                delta=f"{total_profit_loss_pct:.2f}%",
+                delta=f"{total_profit_loss_pct:+.2f}%",
                 delta_color="normal" if total_profit_loss >= 0 else "inverse",
-                help="Total profits WITHOUT deducting fees"
+                help="Before deducting fees"
             )
 
         with col4:
             st.metric(
-                "NET PnL (after fees)",
+                "NET P&L",
                 f"{net_profit_loss:.2f} CHF",
-                delta=f"{roi_pct:.2f}%",
+                delta=f"{roi_pct:+.2f}%",
                 delta_color="normal" if net_profit_loss >= 0 else "inverse",
-                help=f"Total profits AFTER deducting {total_fees:.2f} CHF in fees"
+                help=f"After deducting {total_fees:.2f} CHF in fees"
             )
+
+        # Secondary stats
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Invested", f"{total_invested:.2f} CHF")
+
+        with col2:
+            st.metric("Assets Held", unique_assets)
+
+        with col3:
+            st.metric(
+                "Realized P&L",
+                f"{total_realized:.2f} CHF",
+                delta=f"{(total_realized/total_invested*100):+.2f}%" if total_invested > 0 and total_realized != 0 else None,
+                delta_color="normal" if total_realized >= 0 else "inverse"
+            )
+
+        with col4:
+            st.metric("Fees Paid", f"{total_fees:.2f} CHF")
+
+        st.divider()
 
         # Portfolio breakdown table
         st.subheader(":material/table_view: Breakdown by Asset")
@@ -457,11 +477,28 @@ if uploaded_file is not None:
         portfolio_display['Realized PnL'] = portfolio_display['Realized PnL'].apply(lambda x: f"{'+' if x >= 0 else ''}{x:.2f} CHF")
         portfolio_display['Unrealized PnL'] = portfolio_display['Unrealized PnL'].apply(lambda x: f"{'+' if x >= 0 else ''}{x:.2f} CHF")
         portfolio_display['Total PnL'] = portfolio_display['Total PnL'].apply(lambda x: f"{'+' if x >= 0 else ''}{x:.2f} CHF")
-        portfolio_display['PnL %'] = portfolio_display['PnL %'].apply(lambda x: f"{x:.2f}%")
+        portfolio_display['PnL %'] = portfolio_display['PnL %'].apply(lambda x: f"{'+' if x >= 0 else ''}{x:.2f}%")
 
-        st.dataframe(portfolio_display[['Type', 'Asset', 'Name', 'Quantity', 'Avg Price', 'Current Price',
-                                       'Current Value', 'Fees Paid', 'Realized PnL', 'Unrealized PnL', 'Total PnL', 'PnL %']],
-                    use_container_width=True)
+        _GREEN = 'background-color: rgba(0,200,83,0.15); color: #00c853'
+        _RED   = 'background-color: rgba(255,82,82,0.15); color: #ff5252'
+        _pnl_cols = ['Realized PnL', 'Unrealized PnL', 'Total PnL', 'PnL %']
+        _display_cols = ['Type', 'Asset', 'Name', 'Quantity', 'Avg Price', 'Current Price',
+                         'Current Value', 'Fees Paid', 'Realized PnL', 'Unrealized PnL', 'Total PnL', 'PnL %']
+
+        def _highlight_pnl(val):
+            v = str(val)
+            if v.startswith('+'):
+                return _GREEN
+            elif v.startswith('-'):
+                return _RED
+            return ''
+
+        try:
+            _styled = portfolio_display[_display_cols].style.map(_highlight_pnl, subset=_pnl_cols)
+        except AttributeError:
+            _styled = portfolio_display[_display_cols].style.applymap(_highlight_pnl, subset=_pnl_cols)
+
+        st.dataframe(_styled, use_container_width=True)
 
         # Clarification note
         st.info("The P&L shown does not include fees. The NET P&L in the summary deducts all fees paid.")
@@ -484,24 +521,35 @@ if uploaded_file is not None:
                 # Second row - Performance metrics
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Current Value", f"{row['Current Value']:.2f} CHF")
-                with col2:
+                    gain_pct = ((row['Current Value'] - row['Total Cost']) / row['Total Cost'] * 100) if row['Total Cost'] > 0 else 0
                     st.metric(
-                        "Realized PnL",
+                        "Current Value",
+                        f"{row['Current Value']:.2f} CHF",
+                        delta=f"{gain_pct:+.2f}%",
+                        delta_color="normal" if gain_pct >= 0 else "inverse"
+                    )
+                with col2:
+                    realized_pct = (row['Realized PnL'] / row['Total Cost'] * 100) if row['Total Cost'] > 0 else 0
+                    st.metric(
+                        "Realized P&L",
                         f"{row['Realized PnL']:.2f} CHF",
-                        delta="Closed" if row['Realized PnL'] != 0 else None
+                        delta=f"{realized_pct:+.2f}%",
+                        delta_color="normal" if row['Realized PnL'] >= 0 else "inverse"
                     )
                 with col3:
+                    unrealized_pct = (row['Unrealized PnL'] / row['Total Cost'] * 100) if row['Total Cost'] > 0 else 0
                     st.metric(
-                        "Unrealized PnL",
+                        "Unrealized P&L",
                         f"{row['Unrealized PnL']:.2f} CHF",
-                        delta="Open" if row['Unrealized PnL'] != 0 else None
+                        delta=f"{unrealized_pct:+.2f}%",
+                        delta_color="normal" if row['Unrealized PnL'] >= 0 else "inverse"
                     )
                 with col4:
                     st.metric(
-                        "Total PnL",
+                        "Total P&L",
                         f"{row['Total PnL']:.2f} CHF",
-                        delta=f"{row['PnL %']:.2f}%"
+                        delta=f"{row['PnL %']:+.2f}%",
+                        delta_color="normal" if row['Total PnL'] >= 0 else "inverse"
                     )
 
                 # Description section
@@ -524,8 +572,13 @@ if uploaded_file is not None:
                 portfolio_df,
                 values='Current Value',
                 names='Asset',
-                title='Portfolio Composition by Current Value',
-                hole=0.4
+                title='Portfolio Composition',
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Vivid
+            )
+            fig_pie.update_layout(
+                template='plotly_dark',
+                paper_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -533,22 +586,25 @@ if uploaded_file is not None:
             # PnL bar chart
             fig_bar = go.Figure()
             fig_bar.add_trace(go.Bar(
-                name='Realized PnL',
+                name='Realized P&L',
                 x=portfolio_df['Asset'],
                 y=portfolio_df['Realized PnL'],
-                marker_color='lightgreen'
+                marker_color=['#00c853' if v >= 0 else '#ff5252' for v in portfolio_df['Realized PnL']]
             ))
             fig_bar.add_trace(go.Bar(
-                name='Unrealized PnL',
+                name='Unrealized P&L',
                 x=portfolio_df['Asset'],
                 y=portfolio_df['Unrealized PnL'],
-                marker_color='lightblue'
+                marker_color=['rgba(0,200,83,0.45)' if v >= 0 else 'rgba(255,82,82,0.45)' for v in portfolio_df['Unrealized PnL']]
             ))
             fig_bar.update_layout(
-                title='Profits/Losses by Asset',
+                title='P&L by Asset',
                 barmode='stack',
                 xaxis_title='Asset',
-                yaxis_title='PnL (CHF)'
+                yaxis_title='P&L (CHF)',
+                template='plotly_dark',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -557,10 +613,15 @@ if uploaded_file is not None:
                 portfolio_df,
                 x='Asset',
                 y='PnL %',
-                title='Percentage Performance by Asset',
+                title='Performance % by Asset',
                 color='PnL %',
-                color_continuous_scale=['red', 'yellow', 'green'],
+                color_continuous_scale=[[0, '#ff5252'], [0.5, '#ffeb3b'], [1, '#00c853']],
                 labels={'PnL %': 'Performance (%)'}
+            )
+            fig_pct.update_layout(
+                template='plotly_dark',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig_pct, use_container_width=True)
 
@@ -621,7 +682,10 @@ if uploaded_file is not None:
                     title='Value Evolution by Asset',
                     xaxis_title='Date',
                     yaxis_title='Value (CHF)',
-                    hovermode='x unified'
+                    hovermode='x unified',
+                    template='plotly_dark',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig_timeline, use_container_width=True)
 
