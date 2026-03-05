@@ -1,86 +1,102 @@
-# Yuh Portfolio Analyzer 📊
+# Yuhdash
 
-Aplicación Streamlit para analizar tu portfolio de inversiones de Yuh y calcular beneficios netos.
+Portfolio analytics dashboard for [Yuh](https://www.yuh.com) — the Swiss investment app. Upload your transaction CSV and get a full breakdown of your P&L, fees, asset allocation, and performance history.
 
-## 🚀 Características
+---
 
-- ✅ Carga de archivos CSV de Yuh
-- 💰 Cálculo de fees totales pagadas
-- 📈 Análisis de rendimiento del portfolio
-- 💵 Cálculo de beneficio/pérdida neto (después de fees)
-- 📊 Visualizaciones interactivas (composición, rendimiento por activo)
-- 📜 Historial detallado de transacciones por activo
-- 🎯 Soporte para ETFs, acciones y crypto
+## Features
 
-## 📦 Instalación
+- **Multi-format CSV support** — works with both the standard Yuh export and the crypto transactions format
+- **P&L breakdown** — realized vs unrealized gains per asset, with and without fees
+- **Trading console UI** — color-coded table (green/red) for instant performance reading
+- **Asset details** — per-asset metrics: avg buy price, current price, cost basis, value, and P&L %
+- **Interactive charts** — portfolio composition, P&L by asset, performance %, and value evolution over time
+- **Date range filter** — analyze any time window within your transaction history
+- **Live price lookup** — fetches current prices via Yahoo Finance (yfinance) as fallback for assets in your CSV
+- **Supports ETFs, stocks, and crypto** — auto-detects asset type with appropriate icons
+
+## Screenshots
+
+> Upload your CSV → get instant analytics
+
+| Section | Description |
+|---|---|
+| Portfolio Overview | Portfolio value, Unrealized P&L, Gross P&L, NET P&L |
+| Secondary stats | Total invested, assets held, realized P&L, fees paid |
+| Breakdown table | Per-asset table with color-coded P&L columns |
+| Asset Details | Expandable cards with cost basis, prices, and P&L % deltas |
+| Charts | Composition (donut), P&L bars, performance %, timeline |
+
+## Running locally
 
 ```bash
-# Crear entorno virtual (recomendado)
+# Clone the repo
+git clone https://github.com/cripsisxyz/yuhdash.git
+cd yuhdash
+
+# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # En Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Instalar dependencias
+# Install dependencies
 pip install -r requirements.txt
-```
 
-## 🎮 Uso
-
-```bash
+# Run
 streamlit run app.py
 ```
 
-La aplicación se abrirá automáticamente en tu navegador en `http://localhost:8501`
+App opens at `http://localhost:8501`
 
-## 📝 Cómo usar
+## Requirements
 
-1. **Descarga tu CSV**: Exporta tus transacciones desde Yuh
-2. **Carga el archivo**: Usa el botón de carga en la aplicación
-3. **Revisa el resumen**: Visualiza tus fees y transacciones
-4. **Ingresa precios actuales**: Actualiza los precios de mercado de tus activos
-5. **Calcula beneficios**: Haz clic en "Calcular Beneficios" para ver tu rendimiento
+```
+streamlit>=1.31.0
+pandas>=2.0.0
+plotly>=5.18.0
+yfinance>=0.2.40
+requests>=2.31.0
+```
 
-## 📋 Formato del CSV
+## CSV format
 
-El CSV debe contener las siguientes columnas:
+### Standard Yuh export
 
-- `ACTIVITY TYPE`: Tipo de actividad (INVEST_ORDER_EXECUTED, etc.)
-- `ACTIVITY NAME`: Nombre de la actividad
-- `DEBIT`: Monto debitado
-- `DEBIT CURRENCY`: Moneda del débito
-- `CREDIT`: Monto acreditado
-- `CREDIT CURRENCY`: Moneda del crédito
-- `CARD NUMBER`: Número de tarjeta (si aplica)
-- `LOCALITY`: Localidad
-- `RECIPIENT`: Destinatario
-- `SENDER`: Remitente
-- `FEES/COMMISSION`: Fees o comisiones
-- `BUY/SELL`: Tipo de operación (compra/venta)
-- `QUANTITY`: Cantidad de activos
-- `ASSET`: Nombre del activo
-- `PRICE PER UNIT`: Precio por unidad
+Download from the Yuh app under **Transactions → Export CSV**.
 
-## 🎯 Tipos de Actividad Soportados
+Expected columns:
 
-- `INVEST_ORDER_EXECUTED`: Orden de inversión ejecutada
-- `INVEST_RECURRING_ORDER_EXECUTED`: Orden recurrente ejecutada
-- Y más...
+| Column | Description |
+|---|---|
+| `ACTIVITY TYPE` | `INVEST_ORDER_EXECUTED`, `INVEST_RECURRING_ORDER_EXECUTED`, `INVEST_SELL_EXECUTED` |
+| `ACTIVITY NAME` | Asset description (e.g. `7.2737x Silver (Swisscanto Silver)`) |
+| `DEBIT` | Amount debited (purchase cost) |
+| `CREDIT` | Amount credited (sale proceeds) |
+| `FEES/COMMISSION` | Brokerage fee |
+| `BUY/SELL` | `BUY` or `SELL` |
+| `QUANTITY` | Number of units |
+| `ASSET` | Ticker symbol (e.g. `EQQQ`, `CSSMI`, `BTC`) |
+| `PRICE PER UNIT` | Execution price |
+| `DATE` | Transaction date |
 
-## 📊 Métricas Calculadas
+### Crypto transactions format
 
-- **Total Invertido**: Suma de todas tus compras
-- **Valor Actual**: Valor de mercado de tu portfolio
-- **Beneficio/Pérdida Bruto**: Diferencia entre valor actual y costo
-- **Beneficio/Pérdida NETO**: Después de deducir fees
-- **ROI Neto**: Retorno de inversión porcentual
-- **Composición del Portfolio**: Distribución por activo
+Also supported — uses the Yuh crypto CSV columns (`Transaction type`, `Asset`, `Eur (amount)`, etc.). The app auto-detects the format on upload.
 
-## 🛠️ Tecnologías
+## How P&L is calculated
 
-- Python 3.8+
-- Streamlit
-- Pandas
-- Plotly
+- **Realized P&L** — calculated on each SELL using the average cost basis of prior BUYs
+- **Unrealized P&L** — `(last known price × current quantity) − cost basis`
+- **Gross P&L** — realized + unrealized
+- **NET P&L** — gross P&L minus all fees paid
+- **Current price** — taken from the last transaction price in your CSV; falls back to Yahoo Finance via `yfinance`
 
-## 📄 Licencia
+## Tech stack
+
+- [Streamlit](https://streamlit.io) — UI framework
+- [Pandas](https://pandas.pydata.org) — data processing
+- [Plotly](https://plotly.com/python) — interactive charts
+- [yfinance](https://github.com/ranaroussi/yfinance) — live price fallback
+
+## License
 
 MIT
