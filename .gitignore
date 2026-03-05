@@ -26,8 +26,9 @@ wheels/
 # Streamlit secrets only
 .streamlit/secrets.toml
 
-# CSV files (para no subir datos financieros personales)
+# CSV files (no subir datos financieros personales)
 *.csv
+!sample_data.csv
 
 # IDE
 .vscode/
